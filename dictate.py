@@ -7,6 +7,7 @@ import signal
 import subprocess
 import sys
 import threading
+import time
 
 import numpy as np
 import sounddevice as sd
@@ -27,6 +28,52 @@ DEFAULT_SILENCE_TIMEOUT = 2.0  # Seconds of silence after speech to auto-stop
 def err(*args, **kwargs):
     """Print to stderr."""
     print(*args, file=sys.stderr, **kwargs)
+
+
+BAR_WIDTH = 20
+BAR_FILLED = "\u2501"   # ━
+BAR_EMPTY = "\u2591"    # ░
+BAR_REF_SECS = 60       # Visual bar fills over 60s (timer keeps counting beyond)
+
+
+def display_progress(stop_event, start_time, max_secs, vad_state):
+    """Show a live progress bar on stderr during recording."""
+    if not sys.stderr.isatty():
+        return
+
+    speech_started, silent_frames, total_frames, sample_rate, cal_secs = vad_state
+
+    while not stop_event.is_set():
+        elapsed = time.monotonic() - start_time
+        mins = int(elapsed) // 60
+        secs = int(elapsed) % 60
+
+        progress = min(elapsed / max_secs, 1.0)
+        filled = int(BAR_WIDTH * progress)
+        bar = BAR_FILLED * filled + BAR_EMPTY * (BAR_WIDTH - filled)
+
+        # Determine status label
+        if speech_started is None:
+            status = "recording..."
+        elif total_frames[0] / sample_rate < cal_secs:
+            status = "calibrating..."
+        elif speech_started[0]:
+            if silent_frames[0] > 0:
+                status = "silence..."
+            else:
+                status = "speech"
+        else:
+            status = "listening..."
+
+        line = f"\r\033[31m\u2b24\033[0m {mins}:{secs:02d} {bar}  {status}"
+        sys.stderr.write(f"{line}\033[K")
+        sys.stderr.flush()
+
+        stop_event.wait(0.1)
+
+    # Clear the progress line
+    sys.stderr.write("\r\033[K")
+    sys.stderr.flush()
 
 
 def record_audio(
@@ -114,24 +161,33 @@ def record_audio(
             stop_event.wait(0.2)
 
     timeout = duration if duration else MAX_RECORDING
+    bar_max = duration if duration else BAR_REF_SECS
+
+    # Build VAD state tuple for progress display (None = no VAD)
+    if vad:
+        vad_display = (vad_speech_started, vad_silent_frames, vad_total_frames,
+                       sample_rate, CALIBRATION_SECS)
+    else:
+        vad_display = (None, None, [0], sample_rate, 0)
+
+    # Announce before opening the stream so the mic doesn't pick it up
+    if vad:
+        subprocess.run(
+            ["say", "-r", "200", "recording started"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
 
     with stream:
-        if duration:
-            err(f"Recording for {duration:.0f}s... (Ctrl+C to stop early)")
-        elif vad:
-            err("Recording... (auto-stop after silence)")
-            # After calibration: play beep to signal mic is live
-            def _signal_ready():
-                subprocess.run(
-                    ["afplay", "/System/Library/Sounds/Tink.aiff"],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-            threading.Timer(CALIBRATION_SECS, _signal_ready).start()
-        elif stop_file:
-            err("Recording...")
-        else:
-            err("Recording... press Enter to stop.")
+        start_time = time.monotonic()
+
+        # Start progress bar
+        progress_thread = threading.Thread(
+            target=display_progress,
+            args=(stop_event, start_time, bar_max, vad_display),
+            daemon=True,
+        )
+        progress_thread.start()
 
         if not duration:
             t = threading.Thread(target=wait_for_enter, daemon=True)
@@ -148,9 +204,19 @@ def record_audio(
         try:
             stop_event.wait()
         except KeyboardInterrupt:
-            err()  # newline after ^C
+            pass
 
         safety_timer.cancel()
+        # Wait for progress bar to clear
+        progress_thread.join(timeout=0.5)
+
+    # Announce recording ended (in background so it doesn't block transcription)
+    if vad:
+        subprocess.Popen(
+            ["say", "-r", "200", "recording ended"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
 
     if not chunks:
         return np.array([], dtype="float32")

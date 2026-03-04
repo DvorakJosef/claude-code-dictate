@@ -25,6 +25,15 @@ PYTHON_MAJOR=$(echo "$PYTHON_VERSION" | cut -d. -f1)
 PYTHON_MINOR=$(echo "$PYTHON_VERSION" | cut -d. -f2)
 [[ "$PYTHON_MAJOR" -ge 3 && "$PYTHON_MINOR" -ge 10 ]] || error "Python 3.10+ required (found $PYTHON_VERSION)."
 
+if ! python3 -c "import ctypes.util; exit(0 if ctypes.util.find_library('portaudio') else 1)" 2>/dev/null; then
+    if command -v brew >/dev/null 2>&1; then
+        info "Installing PortAudio via Homebrew (required by sounddevice)..."
+        brew install portaudio
+    else
+        error "PortAudio not found. Install it with: brew install portaudio"
+    fi
+fi
+
 # --- Install Python script ---
 
 info "Installing dictate.py to $INSTALL_DIR/"
@@ -57,7 +66,7 @@ cat > "$BIN_DIR/dictate-editor" << 'EOF'
 #!/bin/bash
 # "Editor" that records voice and writes transcription to the given file.
 # Designed to be used as EDITOR with Claude Code's Ctrl+G (external editor).
-~/.local/bin/dictate "$@" > "$1"
+~/.local/bin/dictate --vad > "$1"
 EOF
 chmod +x "$BIN_DIR/dictate-editor"
 
@@ -81,15 +90,17 @@ fi
 ok "Installation complete!"
 echo ""
 echo "  Usage in Claude Code:"
-echo "    /dictate        — start voice recording"
-echo "    /stop-dictate   — stop recording and transcribe"
+echo "    /dictate        — start voice recording (with transcription menu)"
+echo "    /stop-dictate   — stop recording manually"
+echo ""
+echo "  Voice input via Ctrl+G (recommended):"
+echo "    Add this alias to your ~/.zshrc or ~/.bashrc:"
+echo "      alias claude='EDITOR=dictate-editor claude'"
+echo "    Then press Ctrl+G in Claude Code to dictate into the input field."
 echo ""
 echo "  Standalone usage:"
 echo "    dictate                          — record until Enter"
 echo "    dictate --vad                    — auto-stop after silence"
 echo "    dictate --model small            — use smaller/faster model"
 echo "    dictate --language en            — force English"
-echo ""
-echo "  Editor integration (Ctrl+G in Claude Code):"
-echo "    EDITOR=dictate-editor claude"
 echo ""
