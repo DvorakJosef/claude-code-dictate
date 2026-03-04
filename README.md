@@ -12,7 +12,7 @@ Voice dictation for [Claude Code](https://docs.anthropic.com/en/docs/claude-code
 ## Install
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/claude-code-dictate.git
+git clone https://github.com/DvorakJosef/claude-code-dictate.git
 cd claude-code-dictate
 ./install.sh
 ```
