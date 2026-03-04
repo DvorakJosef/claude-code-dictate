@@ -1,5 +1,9 @@
 # claude-code-dictate
 
+<p align="center">
+  <img src="demo.gif" alt="Talk to your Claude Code" width="600">
+</p>
+
 Voice dictation for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Speak instead of typing — everything is transcribed locally on your Mac using [Whisper](https://github.com/ml-explore/mlx-examples/tree/main/whisper) on Apple Silicon. No API calls, no cloud, fully on-device.
 
 ## Requirements
