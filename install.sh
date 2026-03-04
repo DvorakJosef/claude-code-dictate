@@ -85,6 +85,31 @@ if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
     warn "  export PATH=\"\$HOME/.local/bin:\$PATH\""
 fi
 
+# --- Set up Ctrl+G voice input alias ---
+
+SHELL_RC="$HOME/.zshrc"
+[[ -f "$HOME/.bashrc" && ! -f "$HOME/.zshrc" ]] && SHELL_RC="$HOME/.bashrc"
+ALIAS_LINE="alias claude='EDITOR=dictate-editor claude'"
+
+if grep -qF "EDITOR=dictate-editor" "$SHELL_RC" 2>/dev/null; then
+    info "Ctrl+G voice input alias already configured in $SHELL_RC"
+else
+    echo ""
+    printf "  Enable voice dictation via Ctrl+G in Claude Code? (adds alias to %s)\n" "$SHELL_RC"
+    printf "  This sets EDITOR=dictate-editor so Ctrl+G records voice instead of opening a text editor.\n"
+    printf "  [Y/n] "
+    read -r answer < /dev/tty || answer="n"
+    if [[ "$answer" =~ ^[Nn] ]]; then
+        info "Skipped. You can add it manually later:"
+        info "  $ALIAS_LINE"
+    else
+        echo "" >> "$SHELL_RC"
+        echo "# Claude Code voice dictation (Ctrl+G)" >> "$SHELL_RC"
+        echo "$ALIAS_LINE" >> "$SHELL_RC"
+        ok "Added alias to $SHELL_RC (takes effect in new terminal sessions)"
+    fi
+fi
+
 # --- Done ---
 
 ok "Installation complete!"
@@ -92,11 +117,7 @@ echo ""
 echo "  Usage in Claude Code:"
 echo "    /dictate        — start voice recording (with transcription menu)"
 echo "    /stop-dictate   — stop recording manually"
-echo ""
-echo "  Voice input via Ctrl+G (recommended):"
-echo "    Add this alias to your ~/.zshrc or ~/.bashrc:"
-echo "      alias claude='EDITOR=dictate-editor claude'"
-echo "    Then press Ctrl+G in Claude Code to dictate into the input field."
+echo "    Ctrl+G          — dictate into input field (if alias enabled)"
 echo ""
 echo "  Standalone usage:"
 echo "    dictate                          — record until Enter"
